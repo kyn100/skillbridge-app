@@ -2,7 +2,56 @@ import { NextResponse } from 'next/server';
 import { getServerSession } from 'next-auth';
 import { authOptions } from '@/lib/auth';
 import { getDb } from '@/lib/db';
-import { generateStudyPlan } from '@/lib/claude';
+import { generateStudyPlan, generateTextbookChapters, generateFlashcards, generateMindmap, generateCaseStudies } from '@/lib/claude';
+
+async function warmUpModule(moduleId: number, title: string, skillCategory: string, description: string) {
+  const db = getDb();
+
+  // Skip if textbook already exists (idempotent)
+  const existing = db.prepare('SELECT id FROM textbook_chapters WHERE module_id=?').get(moduleId);
+  if (existing) return;
+
+  // Phase 1: textbook + mindmap + case studies in parallel
+  const [chapters, mindmapData, caseData] = await Promise.all([
+    generateTextbookChapters(title, skillCategory, description),
+    generateMindmap(title, skillCategory, description),
+    generateCaseStudies(title, skillCategory, description),
+  ]);
+
+  // Save textbook chapters
+  const insertChapter = db.prepare(
+    'INSERT INTO textbook_chapters (module_id, title, content_markdown, order_num) VALUES (?, ?, ?, ?)'
+  );
+  db.transaction(() => {
+    for (const ch of chapters) insertChapter.run(moduleId, ch.title, ch.content_markdown, ch.order_num);
+  })();
+  db.prepare("UPDATE study_modules SET status='in_progress' WHERE id=? AND status='available'").run(moduleId);
+
+  // Save mindmap
+  if (!db.prepare('SELECT id FROM mindmaps WHERE module_id=?').get(moduleId)) {
+    db.prepare('INSERT INTO mindmaps (module_id, data_json) VALUES (?, ?)').run(moduleId, JSON.stringify(mindmapData));
+  }
+
+  // Save case studies
+  if (!db.prepare('SELECT id FROM case_studies WHERE module_id=?').get(moduleId)) {
+    const insertCase = db.prepare(
+      'INSERT INTO case_studies (module_id, title, industry, story, analysis, key_learnings_json, order_num) VALUES (?, ?, ?, ?, ?, ?, ?)'
+    );
+    db.transaction(() => {
+      caseData.forEach((c, i) => insertCase.run(moduleId, c.title, c.industry, c.story, c.analysis, JSON.stringify(c.key_learnings), i + 1));
+    })();
+  }
+
+  // Phase 2: flashcards (needs chapter content)
+  if (!db.prepare('SELECT id FROM flashcards WHERE module_id=?').get(moduleId)) {
+    const combinedContent = chapters.map(c => c.content_markdown).join('\n\n');
+    const cards = await generateFlashcards(title, combinedContent);
+    const insertCard = db.prepare('INSERT INTO flashcards (module_id, front, back, order_num) VALUES (?, ?, ?, ?)');
+    db.transaction(() => {
+      cards.forEach((card, i) => insertCard.run(moduleId, card.front, card.back, i + 1));
+    })();
+  }
+}
 
 async function getUserId() {
   const session = await getServerSession(authOptions);
@@ -68,8 +117,16 @@ export async function POST(req: Request) {
       });
     })();
 
-    const modules = db.prepare('SELECT * FROM study_modules WHERE plan_id=? ORDER BY order_num').all(planId);
+    const modules = db.prepare('SELECT * FROM study_modules WHERE plan_id=? ORDER BY order_num').all(planId) as Array<{ id: number; title: string; skill_category: string; description: string }>;
     const plan = db.prepare('SELECT * FROM study_plans WHERE id=?').get(planId) as Record<string, unknown>;
+
+    // Fire background warm-up for module 1 — runs after response is sent
+    const m1 = modules[0];
+    if (m1) {
+      void warmUpModule(m1.id, m1.title, m1.skill_category, m1.description)
+        .catch(err => console.error('Module 1 warm-up failed:', err));
+    }
+
     return NextResponse.json({ ...plan, skill_gaps: JSON.parse(plan.skill_gaps_json as string), modules });
   } catch (err) {
     console.error('Study plan error:', err);

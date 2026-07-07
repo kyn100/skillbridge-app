@@ -271,16 +271,15 @@ export async function generateTextbookChapters(
     'Level Up — the tricks the pros actually use',
   ];
 
-  const chapters: Array<{ title: string; content_markdown: string; order_num: number }> = [];
-
-  for (let i = 0; i < 3; i++) {
-    const chapterTitle = `Chapter ${i + 1}: ${chapterFocuses[i]}`;
-    const msg = await getClient().messages.create({
-      model: 'claude-sonnet-4-6',
-      max_tokens: 4096,
-      messages: [{
-        role: 'user',
-        content: `You're a brilliant friend who's an expert in "${moduleTitle}" (${skillCategory}). You're NOT writing a textbook — you're explaining this over coffee to a smart friend who's brand new to it. Your job: make them excited, not overwhelmed.
+  const chapters = await Promise.all(
+    chapterFocuses.map(async (focus, i) => {
+      const chapterTitle = `Chapter ${i + 1}: ${focus}`;
+      const msg = await getClient().messages.create({
+        model: 'claude-sonnet-4-6',
+        max_tokens: 4096,
+        messages: [{
+          role: 'user',
+          content: `You're a brilliant friend who's an expert in "${moduleTitle}" (${skillCategory}). You're NOT writing a textbook — you're explaining this over coffee to a smart friend who's brand new to it. Your job: make them excited, not overwhelmed.
 
 Context about this module: ${moduleDescription}
 
@@ -308,12 +307,15 @@ REQUIRED STRUCTURE:
 
 Write 500-700 words total. Output ONLY raw markdown. Start with:
 # ${chapterTitle}`,
-      }],
-    });
-
-    const content_markdown = (msg.content[0] as { text: string }).text.trim();
-    chapters.push({ title: chapterTitle, content_markdown, order_num: i + 1 });
-  }
+        }],
+      });
+      return {
+        title: chapterTitle,
+        content_markdown: (msg.content[0] as { text: string }).text.trim(),
+        order_num: i + 1,
+      };
+    })
+  );
 
   return chapters;
 }
