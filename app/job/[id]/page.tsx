@@ -1,8 +1,8 @@
 'use client';
 
-import { useEffect, useState } from 'react';
+import { useEffect, useState, useRef } from 'react';
 import { useRouter, useParams } from 'next/navigation';
-import { ArrowLeft, FileText, BookOpen, MapPin, Building2, ExternalLink, Loader2, ChevronDown, ChevronUp } from 'lucide-react';
+import { ArrowLeft, FileText, BookOpen, MapPin, Building2, ExternalLink, Loader2, ChevronDown, ChevronUp, CheckCircle2 } from 'lucide-react';
 import type { JobListing } from '@/lib/types';
 
 interface JobSummary {
@@ -12,6 +12,65 @@ interface JobSummary {
   key_technologies: string[];
   culture_notes: string;
   summary: string;
+}
+
+const RESUME_STEPS = [
+  { label: 'Reading your profile', duration: 3000 },
+  { label: 'Analysing job requirements', duration: 6000 },
+  { label: 'Tailoring resume content', duration: 10000 },
+  { label: 'Writing achievements & skills', duration: 8000 },
+  { label: 'Finalising and formatting', duration: 4000 },
+];
+
+function ResumeProgressOverlay() {
+  const [step, setStep] = useState(0);
+  const timerRef = useRef<ReturnType<typeof setTimeout> | null>(null);
+
+  useEffect(() => {
+    let current = 0;
+    function advance() {
+      current += 1;
+      if (current < RESUME_STEPS.length) {
+        setStep(current);
+        timerRef.current = setTimeout(advance, RESUME_STEPS[current].duration);
+      }
+    }
+    timerRef.current = setTimeout(advance, RESUME_STEPS[0].duration);
+    return () => { if (timerRef.current) clearTimeout(timerRef.current); };
+  }, []);
+
+  return (
+    <div className="fixed inset-0 bg-black/40 backdrop-blur-sm z-50 flex items-center justify-center p-4">
+      <div className="bg-white rounded-2xl shadow-2xl p-8 w-full max-w-sm">
+        <div className="text-center mb-6">
+          <div className="w-14 h-14 rounded-full bg-teal-50 flex items-center justify-center mx-auto mb-3">
+            <Loader2 size={28} className="text-teal-600 animate-spin" />
+          </div>
+          <h3 className="font-bold text-gray-900 text-lg">Building your resume</h3>
+          <p className="text-sm text-gray-400 mt-1">Claude is tailoring it to this job</p>
+        </div>
+        <div className="space-y-3">
+          {RESUME_STEPS.map((s, i) => (
+            <div key={i} className="flex items-center gap-3">
+              <div className={`w-5 h-5 rounded-full flex items-center justify-center shrink-0 transition-all ${
+                i < step ? 'bg-teal-500' : i === step ? 'bg-teal-100 ring-2 ring-teal-400' : 'bg-gray-100'
+              }`}>
+                {i < step
+                  ? <CheckCircle2 size={14} className="text-white" />
+                  : i === step
+                  ? <div className="w-2 h-2 rounded-full bg-teal-500 animate-pulse" />
+                  : <div className="w-2 h-2 rounded-full bg-gray-300" />}
+              </div>
+              <span className={`text-sm transition-colors ${
+                i < step ? 'text-teal-600 line-through' : i === step ? 'text-gray-900 font-medium' : 'text-gray-400'
+              }`}>{s.label}</span>
+            </div>
+          ))}
+        </div>
+        <p className="text-xs text-gray-400 text-center mt-6">This usually takes 20–35 seconds</p>
+      </div>
+    </div>
+  );
 }
 
 export default function JobDetailPage() {
@@ -57,6 +116,7 @@ export default function JobDetailPage() {
 
   return (
     <div className="max-w-3xl mx-auto">
+      {generatingResume && <ResumeProgressOverlay />}
       <button onClick={() => router.back()} className="btn-secondary text-sm px-3 py-1.5 mb-6">
         <ArrowLeft size={14} /> Back to Results
       </button>
