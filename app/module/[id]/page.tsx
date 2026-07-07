@@ -4,7 +4,7 @@ import { useEffect, useState, useMemo, useRef } from 'react';
 import { useRouter, useParams } from 'next/navigation';
 import {
   ArrowLeft, BookOpen, CheckCircle, Loader2, ClipboardList,
-  Layers, BookMarked, Search, X, Network, Clock, ChevronLeft, ChevronRight,
+  Layers, BookMarked, Search, X, Network, Clock, ChevronLeft, ChevronRight, RefreshCw,
 } from 'lucide-react';
 import ReactMarkdown from 'react-markdown';
 import remarkGfm from 'remark-gfm';
@@ -70,11 +70,31 @@ function CodeBlock({ lang, children }: { lang: string; children: React.ReactNode
 
 // ─── Callout box for blockquotes ─────────────────────────────────────────────
 
+function extractText(node: React.ReactNode): string {
+  if (typeof node === 'string') return node;
+  if (Array.isArray(node)) return node.map(extractText).join('');
+  if (node && typeof node === 'object' && 'props' in (node as object)) {
+    return extractText((node as React.ReactElement<{ children?: React.ReactNode }>).props.children);
+  }
+  return '';
+}
+
+const CALLOUT_TYPES = {
+  '⚡': { bg: 'bg-amber-50',  border: 'border-amber-200', text: 'text-amber-900', icon: '⚡', label: 'Quick Win'  },
+  '⚠':  { bg: 'bg-red-50',    border: 'border-red-200',   text: 'text-red-900',   icon: '⚠️', label: 'Watch Out'  },
+  '⚠️': { bg: 'bg-red-50',    border: 'border-red-200',   text: 'text-red-900',   icon: '⚠️', label: 'Watch Out'  },
+  '🌍': { bg: 'bg-green-50',  border: 'border-green-200', text: 'text-green-900', icon: '🌍', label: 'Real World' },
+  '💡': { bg: 'bg-blue-50',   border: 'border-blue-200',  text: 'text-blue-900',  icon: '💡', label: 'Note'       },
+} as const;
+
 function Callout({ children }: { children: React.ReactNode }) {
+  const text = extractText(children).trimStart();
+  const match = Object.entries(CALLOUT_TYPES).find(([emoji]) => text.startsWith(emoji));
+  const style = match ? match[1] : CALLOUT_TYPES['💡'];
   return (
-    <div className="my-6 flex gap-3 pl-4 pr-4 py-4 bg-blue-50 border border-blue-200 rounded-xl">
-      <span className="text-blue-400 text-lg mt-0.5 shrink-0">💡</span>
-      <div className="text-blue-900 text-sm leading-relaxed [&>p]:mb-0">{children}</div>
+    <div className={`my-6 flex gap-3 px-4 py-4 ${style.bg} border ${style.border} rounded-xl`}>
+      <span className="text-lg mt-0.5 shrink-0">{style.icon}</span>
+      <div className={`${style.text} text-sm leading-relaxed [&>p]:mb-0`}>{children}</div>
     </div>
   );
 }
@@ -399,6 +419,12 @@ export default function ModulePage() {
 
             {/* Study tools */}
             <div className="mt-4 pt-4 border-t border-gray-100 space-y-2">
+              <button
+                onClick={() => { if (confirm('Regenerate all chapters with the new engaging style?')) { setChapters([]); generateTextbook(); } }}
+                className="btn-secondary w-full justify-center text-sm py-2 text-orange-600 hover:text-orange-700 hover:border-orange-200"
+              >
+                <RefreshCw size={14} /> Regenerate Textbook
+              </button>
               <button onClick={() => router.push(`/mindmap/${id}`)} className="btn-secondary w-full justify-center text-sm py-2">
                 <Network size={14} /> Mind Map
               </button>

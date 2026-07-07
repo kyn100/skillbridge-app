@@ -262,9 +262,9 @@ export async function generateTextbookChapters(
   moduleDescription: string,
 ): Promise<Array<{ title: string; content_markdown: string; order_num: number }>> {
   const chapterFocuses = [
-    'Core Concepts and Fundamentals',
-    'Practical Application and Implementation',
-    'Advanced Topics and Best Practices',
+    'The Big Picture — what this is and why it clicks',
+    'Hands-On — building your first real thing',
+    'Level Up — the tricks the pros actually use',
   ];
 
   const chapters: Array<{ title: string; content_markdown: string; order_num: number }> = [];
@@ -276,17 +276,33 @@ export async function generateTextbookChapters(
       max_tokens: 4096,
       messages: [{
         role: 'user',
-        content: `Write the content for "${chapterTitle}" in a technical textbook about "${moduleTitle}" (${skillCategory}).
+        content: `You're a brilliant friend who's an expert in "${moduleTitle}" (${skillCategory}). You're NOT writing a textbook — you're explaining this over coffee to a smart friend who's brand new to it. Your job: make them excited, not overwhelmed.
 
-Context: ${moduleDescription}
+Context about this module: ${moduleDescription}
 
-Write 400-600 words of educational content. Include:
-- Clear concept explanations
-- Code examples in markdown code blocks where relevant
-- Real-world applications
-- A "Key Takeaways" section at the end
+Write "${chapterTitle}" — Chapter ${i + 1} of 3.
 
-Output ONLY the raw markdown content. Start with the heading:
+VOICE RULES (non-negotiable):
+- Talk directly to the reader: "you'll", "let's", "here's the thing"
+- Keep paragraphs SHORT — 2-3 sentences max. White space is your friend.
+- Every concept needs a plain-English analogy: "Think of it like..."
+- Use specific, real examples (real company names, real tools, real scenarios)
+- Be encouraging — this stuff IS learnable and it IS worth it
+
+REQUIRED STRUCTURE:
+1. Open with a TL;DR callout (use exactly this format):
+   > 💡 **TL;DR:** One punchy sentence on what they'll learn and why it's useful.
+
+2. Main content: short explanations, analogies, code examples where relevant (keep code snippets focused and short)
+
+3. Include at least TWO of these callouts wherever they fit naturally:
+   > ⚡ **Quick Win:** Something they can try or build TODAY with this knowledge.
+   > ⚠️ **Common Mistake:** The thing almost everyone gets wrong at first — and how to avoid it.
+   > 🌍 **Real World:** A specific company, product, or situation where this is used right now.
+
+4. End with "## Key Takeaways" — exactly 3 bullet points, each one sentence, punchy and memorable.
+
+Write 500-700 words total. Output ONLY raw markdown. Start with:
 # ${chapterTitle}`,
       }],
     });
