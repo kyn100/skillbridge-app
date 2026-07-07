@@ -1,7 +1,11 @@
 import Anthropic from '@anthropic-ai/sdk';
 import type { ResumeContent, TestQuestion } from './types';
 
-const client = new Anthropic({ apiKey: process.env.ANTHROPIC_API_KEY });
+let _client: Anthropic | null = null;
+function getClient(): Anthropic {
+  if (!_client) _client = new Anthropic({ apiKey: process.env.ANTHROPIC_API_KEY });
+  return _client;
+}
 
 function extractJson<T>(text: string): T {
   const match = text.match(/```json\s*([\s\S]*?)\s*```/) || text.match(/(\[[\s\S]*\]|\{[\s\S]*\})/);
@@ -29,7 +33,7 @@ export interface Roadmap {
 }
 
 export async function generateRoadmap(fieldName: string, fieldDescription: string): Promise<Roadmap> {
-  const msg = await client.messages.create({
+  const msg = await getClient().messages.create({
     model: 'claude-sonnet-4-6',
     max_tokens: 6000,
     messages: [{
@@ -67,7 +71,7 @@ Make skills, tools, milestones, and resources specific and actionable for ${fiel
 }
 
 export async function generateKeywords(fieldName: string): Promise<string[]> {
-  const msg = await client.messages.create({
+  const msg = await getClient().messages.create({
     model: 'claude-sonnet-4-6',
     max_tokens: 512,
     messages: [{
@@ -92,7 +96,7 @@ export async function searchJobs(
   onProgress?.('Searching LinkedIn, Indeed, Glassdoor, ZipRecruiter & Dice...');
 
   // Step 1: Web search — Claude searches and narrates findings
-  const searchResp = await client.messages.create({
+  const searchResp = await getClient().messages.create({
     model: 'claude-sonnet-4-6',
     max_tokens: 4096,
     tools: [{ type: 'web_search_20260209' as never, name: 'web_search' }],
@@ -112,7 +116,7 @@ For each job found report: job title, company, location, posting URL, site name,
   onProgress?.('Ranking and formatting results...');
 
   // Step 2: Use Haiku (3-4× faster) to reformat narrative → JSON
-  const formatResp = await client.messages.create({
+  const formatResp = await getClient().messages.create({
     model: 'claude-haiku-4-5',
     max_tokens: 3000,
     messages: [{
@@ -138,7 +142,7 @@ export async function summarizeJob(description: string, keywords: string[]): Pro
   culture_notes: string;
   summary: string;
 }> {
-  const msg = await client.messages.create({
+  const msg = await getClient().messages.create({
     model: 'claude-sonnet-4-6',
     max_tokens: 1024,
     messages: [{
@@ -173,7 +177,7 @@ export async function generateResume(
   jobTitle: string,
   company: string,
 ): Promise<ResumeContent> {
-  const msg = await client.messages.create({
+  const msg = await getClient().messages.create({
     model: 'claude-sonnet-4-6',
     max_tokens: 3000,
     messages: [{
@@ -223,7 +227,7 @@ export async function generateStudyPlan(
     estimated_hours: number;
   }>;
 }> {
-  const msg = await client.messages.create({
+  const msg = await getClient().messages.create({
     model: 'claude-sonnet-4-6',
     max_tokens: 2500,
     messages: [{
@@ -271,7 +275,7 @@ export async function generateTextbookChapters(
 
   for (let i = 0; i < 3; i++) {
     const chapterTitle = `Chapter ${i + 1}: ${chapterFocuses[i]}`;
-    const msg = await client.messages.create({
+    const msg = await getClient().messages.create({
       model: 'claude-sonnet-4-6',
       max_tokens: 4096,
       messages: [{
@@ -319,7 +323,7 @@ export async function generateCaseStudies(
   skillCategory: string,
   fieldContext: string,
 ): Promise<Array<{ title: string; industry: string; story: string; analysis: string; key_learnings: string[] }>> {
-  const msg = await client.messages.create({
+  const msg = await getClient().messages.create({
     model: 'claude-sonnet-4-6',
     max_tokens: 8192,
     messages: [{
@@ -349,7 +353,7 @@ export async function generateFlashcards(
   moduleTitle: string,
   chapterContent: string,
 ): Promise<Array<{ front: string; back: string }>> {
-  const msg = await client.messages.create({
+  const msg = await getClient().messages.create({
     model: 'claude-sonnet-4-6',
     max_tokens: 4096,
     messages: [{
@@ -396,7 +400,7 @@ export async function generateConceptDetail(
   moduleTitle: string,
   branchLabel: string,
 ): Promise<ConceptDetail> {
-  const msg = await client.messages.create({
+  const msg = await getClient().messages.create({
     model: 'claude-haiku-4-5',
     max_tokens: 700,
     messages: [{
@@ -426,7 +430,7 @@ export async function generateMindmap(
   moduleDescription: string,
 ): Promise<MindmapData> {
   const COLORS = ['#3B82F6', '#10B981', '#F59E0B', '#EF4444', '#8B5CF6', '#06B6D4'];
-  const msg = await client.messages.create({
+  const msg = await getClient().messages.create({
     model: 'claude-sonnet-4-6',
     max_tokens: 2000,
     messages: [{
@@ -463,7 +467,7 @@ export async function generateTest(
     ? 'application, analysis, and problem-solving with moderate complexity'
     : 'synthesis, evaluation, edge cases, and expert-level reasoning';
 
-  const msg = await client.messages.create({
+  const msg = await getClient().messages.create({
     model: 'claude-sonnet-4-6',
     max_tokens: 3000,
     messages: [{
@@ -521,7 +525,7 @@ export async function generateDailyRoutine(
   jobTitle: string,
 ): Promise<DailyRoutine> {
   const techList = technologies.join(', ');
-  const msg = await client.messages.create({
+  const msg = await getClient().messages.create({
     model: 'claude-sonnet-4-6',
     max_tokens: 2000,
     messages: [{
