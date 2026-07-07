@@ -2,7 +2,8 @@ import Database from 'better-sqlite3';
 import path from 'path';
 import { FIELDS_SEED } from './fields-seed';
 
-const DB_PATH = path.join(process.cwd(), 'data', 'jobseek.db');
+// On Railway, set DB_PATH=/data/skillbridge.db (volume mount). Locally falls back to ./data/
+const DB_PATH = process.env.DB_PATH ?? path.join(process.cwd(), 'data', 'skillbridge.db');
 
 let _db: Database.Database | null = null;
 
