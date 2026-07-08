@@ -28,22 +28,31 @@ export default function TestPage() {
   const [currentQ, setCurrentQ] = useState(0);
 
   useEffect(() => {
-    fetch(`/api/tests?moduleId=${moduleId}`).then(r => r.json()).then(setTests);
+    if (!moduleId) return;
+    fetch(`/api/tests?moduleId=${moduleId}`)
+      .then(r => r.json())
+      .then(data => { if (Array.isArray(data)) setTests(data); })
+      .catch(() => {});
   }, [moduleId]);
 
   async function startTest(level: 1 | 2 | 3) {
     setGenerating(true);
-    const res = await fetch('/api/tests', {
-      method: 'POST',
-      headers: { 'Content-Type': 'application/json' },
-      body: JSON.stringify({ action: 'generate', module_id: Number(moduleId), level }),
-    });
-    const data = await res.json();
-    setActiveTest(data);
-    setSelectedAnswers(new Array(data.questions.length).fill(null));
-    setSubmitted(false);
-    setResult(null);
-    setCurrentQ(0);
+    try {
+      const res = await fetch('/api/tests', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ action: 'generate', module_id: Number(moduleId), level }),
+      });
+      const data = await res.json();
+      if (!res.ok) { alert(data.error ?? 'Failed to generate test'); setGenerating(false); return; }
+      setActiveTest(data);
+      setSelectedAnswers(new Array((data.questions ?? []).length).fill(null));
+      setSubmitted(false);
+      setResult(null);
+      setCurrentQ(0);
+    } catch {
+      alert('Failed to generate test. Please try again.');
+    }
     setGenerating(false);
   }
 
@@ -55,9 +64,13 @@ export default function TestPage() {
       body: JSON.stringify({ action: 'submit', test_id: activeTest.id, answers: selectedAnswers }),
     });
     const data = await res.json();
+    if (!res.ok) { alert(data.error ?? 'Submit failed'); return; }
     setResult(data);
     setSubmitted(true);
-    fetch(`/api/tests?moduleId=${moduleId}`).then(r => r.json()).then(setTests);
+    fetch(`/api/tests?moduleId=${moduleId}`)
+      .then(r => r.json())
+      .then(d => { if (Array.isArray(d)) setTests(d); })
+      .catch(() => {});
   }
 
   function bestScore(test: TestWithAttempts): number | null {
