@@ -2,7 +2,7 @@
 
 import { useEffect, useState, useRef } from 'react';
 import { useRouter, useParams } from 'next/navigation';
-import { ArrowLeft, FileText, BookOpen, MapPin, Building2, ExternalLink, Loader2, ChevronDown, ChevronUp, CheckCircle2 } from 'lucide-react';
+import { ArrowLeft, FileText, MapPin, Building2, ExternalLink, Loader2, ChevronDown, ChevronUp, CheckCircle2, Mic } from 'lucide-react';
 import type { JobListing } from '@/lib/types';
 
 interface JobSummary {
@@ -143,6 +143,9 @@ export default function JobDetailPage() {
         <div className="flex gap-3 mt-5">
           <button onClick={generateResume} disabled={generatingResume} className="btn-primary flex-1 justify-center">
             {generatingResume ? <><Loader2 size={16} className="animate-spin" /> Generating Resume...</> : <><FileText size={16} /> Generate My Resume</>}
+          </button>
+          <button onClick={() => router.push(`/interview/${job.id}`)} className="btn-secondary">
+            <Mic size={16} /> Practice Interview
           </button>
           {!summary && (
             <button onClick={getSummary} disabled={summarizing} className="btn-secondary">

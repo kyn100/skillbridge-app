@@ -502,6 +502,95 @@ Return ONLY a JSON object:
 }
 
 
+// ── Interview Simulation ──────────────────────────────────────────────────────
+
+export interface InterviewQuestion {
+  question: string;
+  question_type: 'behavioral' | 'technical' | 'situational' | 'hr';
+  order_num: number;
+}
+
+export interface AnswerFeedback {
+  score: number;
+  strengths: string[];
+  improvements: string[];
+  sample_answer: string;
+}
+
+export async function generateInterviewQuestions(
+  jobTitle: string,
+  company: string,
+  jobDescription: string,
+  resumeSummary: string,
+  interviewType: 'behavioral' | 'technical' | 'mixed',
+): Promise<InterviewQuestion[]> {
+  const typeGuide =
+    interviewType === 'behavioral'
+      ? 'All questions must be behavioral (STAR-method style: "Tell me about a time when...")'
+      : interviewType === 'technical'
+      ? 'All questions must be technical — coding concepts, system design, problem-solving specific to this role'
+      : '2 HR/general, 2 behavioral (STAR), 2 technical questions';
+
+  const msg = await getClient().messages.create({
+    model: 'claude-sonnet-4-6',
+    max_tokens: 1500,
+    messages: [{
+      role: 'user',
+      content: `You are a senior hiring manager at ${company} interviewing a candidate for the role of ${jobTitle}.
+
+JOB DESCRIPTION:
+${jobDescription.slice(0, 1500)}
+
+CANDIDATE SUMMARY:
+${resumeSummary}
+
+Generate exactly 6 interview questions. Type guide: ${typeGuide}
+
+Make questions specific to this role and company — not generic. Reference the actual skills and context from the job description.
+
+Return ONLY a JSON array:
+[
+  { "question": "...", "question_type": "behavioral" | "technical" | "situational" | "hr", "order_num": 1 }
+]`,
+    }],
+  });
+  return extractJson<InterviewQuestion[]>((msg.content[0] as { text: string }).text);
+}
+
+export async function evaluateAnswer(
+  question: string,
+  questionType: string,
+  answer: string,
+  jobTitle: string,
+  jobDescription: string,
+): Promise<AnswerFeedback> {
+  const msg = await getClient().messages.create({
+    model: 'claude-haiku-4-5',
+    max_tokens: 800,
+    messages: [{
+      role: 'user',
+      content: `You are evaluating a job interview answer for a ${jobTitle} position.
+
+QUESTION (${questionType}): ${question}
+
+CANDIDATE'S ANSWER: ${answer}
+
+JOB CONTEXT: ${jobDescription.slice(0, 500)}
+
+Score this answer and provide feedback. Be honest but constructive.
+
+Return ONLY this JSON object:
+{
+  "score": <integer 1-10>,
+  "strengths": ["specific strength 1", "specific strength 2"],
+  "improvements": ["specific improvement 1", "specific improvement 2"],
+  "sample_answer": "A concise example of a strong answer to this question (2-4 sentences)"
+}`,
+    }],
+  });
+  return extractJson<AnswerFeedback>((msg.content[0] as { text: string }).text);
+}
+
 // ── Daily Routine ─────────────────────────────────────────────────────────────
 
 export interface RoutineBlock {

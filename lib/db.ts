@@ -177,6 +177,36 @@ function initSchema(db: Database.Database): void {
       key TEXT PRIMARY KEY,
       value TEXT NOT NULL DEFAULT ''
     );
+
+    CREATE TABLE IF NOT EXISTS interviews (
+      id INTEGER PRIMARY KEY AUTOINCREMENT,
+      job_listing_id INTEGER NOT NULL REFERENCES job_listings(id),
+      user_id TEXT NOT NULL,
+      interview_type TEXT NOT NULL DEFAULT 'mixed',
+      status TEXT NOT NULL DEFAULT 'in_progress',
+      overall_score REAL,
+      overall_feedback TEXT,
+      created_at TEXT NOT NULL DEFAULT (datetime('now'))
+    );
+
+    CREATE TABLE IF NOT EXISTS interview_questions (
+      id INTEGER PRIMARY KEY AUTOINCREMENT,
+      interview_id INTEGER NOT NULL REFERENCES interviews(id) ON DELETE CASCADE,
+      question TEXT NOT NULL,
+      question_type TEXT NOT NULL DEFAULT 'behavioral',
+      order_num INTEGER NOT NULL DEFAULT 0
+    );
+
+    CREATE TABLE IF NOT EXISTS interview_answers (
+      id INTEGER PRIMARY KEY AUTOINCREMENT,
+      question_id INTEGER NOT NULL REFERENCES interview_questions(id) ON DELETE CASCADE,
+      answer_text TEXT NOT NULL DEFAULT '',
+      score INTEGER NOT NULL DEFAULT 0,
+      strengths_json TEXT NOT NULL DEFAULT '[]',
+      improvements_json TEXT NOT NULL DEFAULT '[]',
+      sample_answer TEXT NOT NULL DEFAULT '',
+      created_at TEXT NOT NULL DEFAULT (datetime('now'))
+    );
   `);
 
   runMigrations(db);
