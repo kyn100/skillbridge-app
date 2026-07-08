@@ -591,6 +591,53 @@ Return ONLY this JSON object:
   return extractJson<AnswerFeedback>((msg.content[0] as { text: string }).text);
 }
 
+// ── Video Recommendations ─────────────────────────────────────────────────────
+
+export async function generateVideoRecommendations(
+  moduleTitle: string,
+  skillCategory: string,
+): Promise<Array<{ title: string; channel: string; url: string; duration: string; description: string }>> {
+  const searchResp = await getClient().messages.create({
+    model: 'claude-sonnet-4-6',
+    max_tokens: 2000,
+    tools: [{ type: 'web_search_20260209' as never, name: 'web_search' }],
+    messages: [{
+      role: 'user',
+      content: `Search YouTube for the top 5 best tutorial videos about "${moduleTitle}" for ${skillCategory}. Find actual YouTube URLs with video titles, channel names, and durations.`,
+    }],
+  });
+
+  const searchText = searchResp.content
+    .filter(b => b.type === 'text')
+    .map(b => (b as { type: 'text'; text: string }).text)
+    .join('\n');
+
+  const formatResp = await getClient().messages.create({
+    model: 'claude-haiku-4-5',
+    max_tokens: 1500,
+    messages: [{
+      role: 'user',
+      content: `Extract YouTube video information from these search results and return as JSON.
+
+RESULTS:
+${searchText}
+
+Return ONLY a JSON array of 3-5 videos with real youtube.com URLs:
+[{
+  "title": "Full video title",
+  "channel": "Channel name",
+  "url": "https://www.youtube.com/watch?v=VIDEO_ID",
+  "duration": "e.g. 18:42",
+  "description": "One sentence about what this video teaches"
+}]
+
+Only include videos with valid youtube.com/watch?v= URLs. Generate exactly 5 results.`,
+    }],
+  });
+
+  return extractJson((formatResp.content[0] as { text: string }).text);
+}
+
 // ── Daily Routine ─────────────────────────────────────────────────────────────
 
 export interface RoutineBlock {

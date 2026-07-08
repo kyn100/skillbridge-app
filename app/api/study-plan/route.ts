@@ -3,7 +3,7 @@ import { NextResponse } from 'next/server';
 import { getServerSession } from 'next-auth';
 import { authOptions } from '@/lib/auth';
 import { rows, row, run, initDb } from '@/lib/db';
-import { generateStudyPlan, generateTextbookChapters, generateFlashcards, generateMindmap, generateCaseStudies } from '@/lib/claude';
+import { generateStudyPlan, generateTextbookChapters, generateFlashcards, generateMindmap, generateCaseStudies, generateVideoRecommendations } from '@/lib/claude';
 
 async function warmUpModule(moduleId: number, title: string, skillCategory: string, description: string) {
   await initDb();
@@ -12,11 +12,12 @@ async function warmUpModule(moduleId: number, title: string, skillCategory: stri
   const existing = await row('SELECT id FROM textbook_chapters WHERE module_id=$1', [moduleId]);
   if (existing) return;
 
-  // Phase 1: textbook + mindmap + case studies in parallel
-  const [chapters, mindmapData, caseData] = await Promise.all([
+  // Phase 1: textbook + mindmap + case studies + videos in parallel
+  const [chapters, mindmapData, caseData, videoData] = await Promise.all([
     generateTextbookChapters(title, skillCategory, description),
     generateMindmap(title, skillCategory, description),
     generateCaseStudies(title, skillCategory, description),
+    generateVideoRecommendations(title, skillCategory),
   ]);
 
   // Save textbook chapters
@@ -42,6 +43,18 @@ async function warmUpModule(moduleId: number, title: string, skillCategory: stri
       await run(
         'INSERT INTO case_studies (module_id, title, industry, story, analysis, key_learnings_json, order_num) VALUES ($1,$2,$3,$4,$5,$6,$7)',
         [moduleId, c.title, c.industry, c.story, c.analysis, JSON.stringify(c.key_learnings), i + 1]
+      );
+    }
+  }
+
+  // Save videos
+  const existingVideo = await row('SELECT id FROM module_videos WHERE module_id=$1', [moduleId]);
+  if (!existingVideo) {
+    for (let i = 0; i < videoData.length; i++) {
+      const v = videoData[i] as { title: string; channel: string; url: string; duration: string; description: string };
+      await run(
+        'INSERT INTO module_videos (module_id, title, channel, url, duration, description, order_num) VALUES ($1,$2,$3,$4,$5,$6,$7)',
+        [moduleId, v.title, v.channel, v.url, v.duration, v.description, i + 1]
       );
     }
   }

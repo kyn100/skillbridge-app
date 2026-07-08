@@ -191,6 +191,18 @@ async function _doInit(): Promise<void> {
       created_at TIMESTAMPTZ NOT NULL DEFAULT CURRENT_TIMESTAMP
     );
 
+    CREATE TABLE IF NOT EXISTS module_videos (
+      id SERIAL PRIMARY KEY,
+      module_id INTEGER NOT NULL REFERENCES study_modules(id) ON DELETE CASCADE,
+      title TEXT NOT NULL DEFAULT '',
+      channel TEXT NOT NULL DEFAULT '',
+      url TEXT NOT NULL DEFAULT '',
+      duration TEXT NOT NULL DEFAULT '',
+      description TEXT NOT NULL DEFAULT '',
+      order_num INTEGER NOT NULL DEFAULT 0,
+      created_at TIMESTAMPTZ NOT NULL DEFAULT CURRENT_TIMESTAMP
+    );
+
     CREATE TABLE IF NOT EXISTS settings (
       key TEXT PRIMARY KEY,
       value TEXT NOT NULL DEFAULT ''

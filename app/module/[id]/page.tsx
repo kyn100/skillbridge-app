@@ -4,7 +4,7 @@ import { useEffect, useState, useMemo, useRef } from 'react';
 import { useRouter, useParams } from 'next/navigation';
 import {
   ArrowLeft, BookOpen, CheckCircle, Loader2, ClipboardList,
-  Layers, BookMarked, Search, X, Network, Clock, ChevronLeft, ChevronRight, RefreshCw,
+  Layers, BookMarked, Search, X, Network, Clock, ChevronLeft, ChevronRight, RefreshCw, PlayCircle,
 } from 'lucide-react';
 import ReactMarkdown from 'react-markdown';
 import remarkGfm from 'remark-gfm';
@@ -16,6 +16,16 @@ interface Chapter {
   id: number;
   title: string;
   content_markdown: string;
+  order_num: number;
+}
+
+interface Video {
+  id: number;
+  title: string;
+  channel: string;
+  url: string;
+  duration: string;
+  description: string;
   order_num: number;
 }
 
@@ -194,6 +204,10 @@ const FONT_SIZES = [
   { label: 'A', cls: 'text-lg', lh: 'leading-[1.9]' },
 ];
 
+function getYouTubeId(url: string): string | null {
+  return url.match(/(?:youtube\.com\/watch\?v=|youtu\.be\/)([^&\n?#]+)/)?.[1] ?? null;
+}
+
 export default function ModulePage() {
   const { id } = useParams<{ id: string }>();
   const router = useRouter();
@@ -204,6 +218,10 @@ export default function ModulePage() {
   const [error, setError] = useState<string | null>(null);
   const [search, setSearch] = useState('');
   const [fontIdx, setFontIdx] = useState(1); // 0=small 1=base 2=large
+  const [activeTab, setActiveTab] = useState<'textbook' | 'videos'>('textbook');
+  const [videos, setVideos] = useState<Video[]>([]);
+  const [videosLoading, setVideosLoading] = useState(false);
+  const [videosFetched, setVideosFetched] = useState(false);
 
   // Track restoration so we don't save before we've restored
   const restoredRef = useRef(false);
@@ -274,6 +292,30 @@ export default function ModulePage() {
     }
     setGenerating(false);
     setLoading(false);
+  }
+
+  async function loadVideos() {
+    if (videosFetched) return;
+    setVideosLoading(true);
+    try {
+      const res = await fetch(`/api/videos?moduleId=${id}`);
+      const data = await res.json() as Video[] | { error: string };
+      if (Array.isArray(data) && data.length > 0) {
+        setVideos(data);
+        setVideosFetched(true);
+      } else {
+        // Not cached yet — generate now
+        const genRes = await fetch('/api/videos', {
+          method: 'POST',
+          headers: { 'Content-Type': 'application/json' },
+          body: JSON.stringify({ module_id: Number(id) }),
+        });
+        const genData = await genRes.json() as Video[] | { error: string };
+        if (Array.isArray(genData)) setVideos(genData);
+        setVideosFetched(true);
+      }
+    } catch { /* best-effort */ }
+    setVideosLoading(false);
   }
 
   // Auto-save chapter position with 1s debounce (only after restore completes)
@@ -443,7 +485,89 @@ export default function ModulePage() {
 
         {/* ── Content ── */}
         <div className="lg:col-span-3">
-          {chapter && (
+          {/* Tab bar */}
+          <div className="flex gap-1 mb-4 bg-gray-100 p-1 rounded-xl w-fit">
+            <button
+              onClick={() => setActiveTab('textbook')}
+              className={`flex items-center gap-1.5 px-4 py-2 rounded-lg text-sm font-medium transition-all ${
+                activeTab === 'textbook'
+                  ? 'bg-white text-gray-900 shadow-sm'
+                  : 'text-gray-500 hover:text-gray-700'
+              }`}
+            >
+              <BookOpen size={14} /> Textbook
+            </button>
+            <button
+              onClick={() => { setActiveTab('videos'); loadVideos(); }}
+              className={`flex items-center gap-1.5 px-4 py-2 rounded-lg text-sm font-medium transition-all ${
+                activeTab === 'videos'
+                  ? 'bg-white text-gray-900 shadow-sm'
+                  : 'text-gray-500 hover:text-gray-700'
+              }`}
+            >
+              <PlayCircle size={14} /> Videos
+            </button>
+          </div>
+
+          {/* Videos panel */}
+          {activeTab === 'videos' && (
+            <div>
+              {videosLoading && (
+                <div className="text-center py-16">
+                  <Loader2 size={28} className="animate-spin text-red-500 mx-auto mb-3" />
+                  <p className="text-gray-500 text-sm">Finding the best videos for this topic...</p>
+                </div>
+              )}
+              {!videosLoading && videos.length === 0 && videosFetched && (
+                <div className="text-center py-16 text-gray-400 text-sm">No videos found for this module.</div>
+              )}
+              {!videosLoading && videos.length > 0 && (
+                <div className="grid grid-cols-1 sm:grid-cols-2 gap-4">
+                  {videos.map(v => {
+                    const ytId = getYouTubeId(v.url);
+                    return (
+                      <div key={v.id} className="card overflow-hidden flex flex-col">
+                        <div className="relative bg-gray-900">
+                          {ytId ? (
+                            <img
+                              src={`https://img.youtube.com/vi/${ytId}/mqdefault.jpg`}
+                              alt={v.title}
+                              className="w-full aspect-video object-cover"
+                              onError={e => { (e.target as HTMLImageElement).style.display = 'none'; }}
+                            />
+                          ) : (
+                            <div className="w-full aspect-video flex items-center justify-center bg-gray-800">
+                              <PlayCircle size={40} className="text-gray-600" />
+                            </div>
+                          )}
+                          {v.duration && (
+                            <span className="absolute bottom-2 right-2 bg-black/75 text-white text-xs px-1.5 py-0.5 rounded font-mono">
+                              {v.duration}
+                            </span>
+                          )}
+                        </div>
+                        <div className="p-4 flex flex-col flex-1">
+                          <p className="text-xs text-gray-500 mb-1">{v.channel}</p>
+                          <h3 className="font-semibold text-gray-900 text-sm mb-2 line-clamp-2 leading-snug">{v.title}</h3>
+                          <p className="text-xs text-gray-500 mb-3 line-clamp-2 flex-1">{v.description}</p>
+                          <a
+                            href={v.url}
+                            target="_blank"
+                            rel="noopener noreferrer"
+                            className="flex items-center justify-center gap-1.5 bg-red-600 hover:bg-red-700 text-white text-xs font-medium px-3 py-2 rounded-lg transition-colors"
+                          >
+                            <PlayCircle size={13} /> Watch on YouTube
+                          </a>
+                        </div>
+                      </div>
+                    );
+                  })}
+                </div>
+              )}
+            </div>
+          )}
+
+          {activeTab === 'textbook' && chapter && (
             <div className="card overflow-hidden">
 
               {/* Chapter header bar */}
