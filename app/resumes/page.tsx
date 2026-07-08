@@ -20,7 +20,7 @@ export default function ResumesPage() {
   const [loading, setLoading] = useState(true);
 
   useEffect(() => {
-    fetch('/api/resume')
+    fetch('/api/resumes')
       .then(r => r.json())
       .then((data: unknown) => {
         setResumes(Array.isArray(data) ? data : []);
@@ -55,7 +55,7 @@ export default function ResumesPage() {
           {resumes.map(r => (
             <div
               key={r.id}
-              onClick={() => router.push(`/resume/${r.job_listing_id}`)}
+              onClick={() => router.push(`/resume/${r.job_listing_id}?id=${r.id}`)}
               className="card p-5 cursor-pointer hover:shadow-md hover:-translate-y-0.5 transition-all flex items-center gap-4"
             >
               <div className="w-10 h-10 rounded-xl bg-blue-50 border border-blue-100 flex items-center justify-center shrink-0">

@@ -1,7 +1,7 @@
 'use client';
 
 import { useEffect, useState } from 'react';
-import { useRouter, useParams } from 'next/navigation';
+import { useRouter, useParams, useSearchParams } from 'next/navigation';
 import {
   ArrowLeft, Download, BookOpen, Loader2, RefreshCw,
   Calendar, Wrench, Trophy, AlertTriangle, ChevronDown, ChevronUp,
@@ -11,26 +11,30 @@ import type { DailyRoutine } from '@/lib/claude';
 
 export default function ResumePage() {
   const { jobId } = useParams<{ jobId: string }>();
+  const searchParams = useSearchParams();
   const router = useRouter();
   const [resume, setResume] = useState<Resume | null>(null);
   const [jobTitle, setJobTitle] = useState('Software Engineer');
   const [loading, setLoading] = useState(true);
   const [regenerating, setRegenerating] = useState(false);
   const [creatingPlan, setCreatingPlan] = useState(false);
-  // keyed by project index
   const [routines, setRoutines] = useState<Record<number, DailyRoutine | 'loading'>>({});
   const [openRoutine, setOpenRoutine] = useState<number | null>(null);
 
   useEffect(() => {
+    const specificId = searchParams.get('id');
+    const resumeUrl = specificId
+      ? `/api/resumes?id=${specificId}`
+      : `/api/resume?jobId=${jobId}`;
     Promise.all([
-      fetch(`/api/resume?jobId=${jobId}`).then(r => r.json()),
+      fetch(resumeUrl).then(r => r.json()),
       fetch(`/api/jobs?id=${jobId}`).then(r => r.json()),
     ]).then(([resumeData, jobData]) => {
       setResume(resumeData);
       if (jobData?.title) setJobTitle(jobData.title);
       setLoading(false);
     });
-  }, [jobId]);
+  }, [jobId, searchParams]);
 
   async function regenerate() {
     setRegenerating(true);
