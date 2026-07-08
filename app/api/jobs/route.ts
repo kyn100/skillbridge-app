@@ -1,3 +1,4 @@
+export const dynamic = 'force-dynamic';
 import { NextResponse } from 'next/server';
 import { rows, row, initDb } from '@/lib/db';
 import { summarizeJob } from '@/lib/claude';

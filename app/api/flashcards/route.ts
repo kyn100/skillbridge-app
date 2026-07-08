@@ -1,3 +1,4 @@
+export const dynamic = 'force-dynamic';
 import { NextResponse } from 'next/server';
 import { rows, row, run, initDb } from '@/lib/db';
 import { generateFlashcards } from '@/lib/claude';
