@@ -1,5 +1,5 @@
 import { NextResponse } from 'next/server';
-import { getDb } from '@/lib/db';
+import { row, run, initDb } from '@/lib/db';
 import bcrypt from 'bcryptjs';
 import crypto from 'crypto';
 
@@ -13,9 +13,9 @@ export async function POST(req: Request) {
     return NextResponse.json({ error: 'Password must be at least 8 characters' }, { status: 400 });
   }
 
-  const db = getDb();
+  await initDb();
 
-  const existing = db.prepare('SELECT id FROM users WHERE email=?').get(email.toLowerCase().trim());
+  const existing = await row('SELECT id FROM users WHERE email=$1', [email.toLowerCase().trim()]);
   if (existing) {
     return NextResponse.json({ error: 'An account with this email already exists' }, { status: 400 });
   }
@@ -23,17 +23,19 @@ export async function POST(req: Request) {
   const id = crypto.randomUUID();
   const password_hash = await bcrypt.hash(password, 12);
 
-  db.prepare('INSERT INTO users (id, name, email, password_hash) VALUES (?, ?, ?, ?)').run(
-    id, name.trim(), email.toLowerCase().trim(), password_hash
+  await run(
+    'INSERT INTO users (id, name, email, password_hash) VALUES ($1,$2,$3,$4)',
+    [id, name.trim(), email.toLowerCase().trim(), password_hash]
   );
 
   // First registered user inherits all existing (dev) data
-  const userCount = (db.prepare('SELECT COUNT(*) as c FROM users').get() as { c: number }).c;
+  const countRow = await row<{ c: string }>('SELECT COUNT(*) as c FROM users');
+  const userCount = Number(countRow?.c ?? 0);
   if (userCount === 1) {
-    db.prepare('UPDATE user_profile  SET user_id=? WHERE user_id IS NULL').run(id);
-    db.prepare('UPDATE job_searches  SET user_id=? WHERE user_id IS NULL').run(id);
-    db.prepare('UPDATE resumes       SET user_id=? WHERE user_id IS NULL').run(id);
-    db.prepare('UPDATE study_plans   SET user_id=? WHERE user_id IS NULL').run(id);
+    await run('UPDATE user_profile  SET user_id=$1 WHERE user_id IS NULL', [id]);
+    await run('UPDATE job_searches  SET user_id=$1 WHERE user_id IS NULL', [id]);
+    await run('UPDATE resumes       SET user_id=$1 WHERE user_id IS NULL', [id]);
+    await run('UPDATE study_plans   SET user_id=$1 WHERE user_id IS NULL', [id]);
   }
 
   return NextResponse.json({ success: true });

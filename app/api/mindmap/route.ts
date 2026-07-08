@@ -1,7 +1,7 @@
 import { NextResponse } from 'next/server';
 import { getServerSession } from 'next-auth';
 import { authOptions } from '@/lib/auth';
-import { getDb } from '@/lib/db';
+import { row, run, initDb } from '@/lib/db';
 import { generateMindmap } from '@/lib/claude';
 
 async function getUserId() {
@@ -17,13 +17,14 @@ export async function GET(req: Request) {
   const moduleId = searchParams.get('moduleId');
   if (!moduleId) return NextResponse.json({ error: 'moduleId required' }, { status: 400 });
 
-  const db = getDb();
-  const row = db.prepare(
-    'SELECT data_json FROM mindmaps WHERE module_id=? ORDER BY created_at DESC LIMIT 1'
-  ).get(Number(moduleId)) as { data_json: string } | undefined;
+  await initDb();
+  const mindmapRow = await row(
+    'SELECT data_json FROM mindmaps WHERE module_id=$1 ORDER BY created_at DESC LIMIT 1',
+    [Number(moduleId)]
+  ) as { data_json: string } | undefined;
 
-  if (!row) return NextResponse.json(null);
-  return NextResponse.json(JSON.parse(row.data_json));
+  if (!mindmapRow) return NextResponse.json(null);
+  return NextResponse.json(JSON.parse(mindmapRow.data_json));
 }
 
 export async function POST(req: Request) {
@@ -31,15 +32,15 @@ export async function POST(req: Request) {
   if (!userId) return NextResponse.json({ error: 'Unauthorized' }, { status: 401 });
 
   const { module_id } = await req.json() as { module_id: number };
-  const db = getDb();
+  await initDb();
 
-  const mod = db.prepare('SELECT title, skill_category, description FROM study_modules WHERE id=?').get(module_id) as
+  const mod = await row('SELECT title, skill_category, description FROM study_modules WHERE id=$1', [module_id]) as
     { title: string; skill_category: string; description: string } | undefined;
   if (!mod) return NextResponse.json({ error: 'Module not found' }, { status: 404 });
 
   try {
     const data = await generateMindmap(mod.title, mod.skill_category, mod.description);
-    db.prepare('INSERT INTO mindmaps (module_id, data_json) VALUES (?, ?)').run(module_id, JSON.stringify(data));
+    await run('INSERT INTO mindmaps (module_id, data_json) VALUES ($1,$2)', [module_id, JSON.stringify(data)]);
     return NextResponse.json(data);
   } catch (err) {
     console.error('Mindmap generation error:', err);

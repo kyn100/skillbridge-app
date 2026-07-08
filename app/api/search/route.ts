@@ -1,7 +1,7 @@
 import { NextResponse } from 'next/server';
 import { getServerSession } from 'next-auth';
 import { authOptions } from '@/lib/auth';
-import { getDb } from '@/lib/db';
+import { rows, run, initDb } from '@/lib/db';
 import { searchJobs } from '@/lib/claude';
 
 export async function POST(req: Request) {
@@ -22,11 +22,11 @@ export async function POST(req: Request) {
         try { controller.enqueue(encoder.encode(`data: ${JSON.stringify(data)}\n\n`)); } catch { /* closed */ }
       };
 
-      const db = getDb();
-      const searchResult = db.prepare(
-        'INSERT INTO job_searches (field_id, keywords_used_json, user_id) VALUES (?, ?, ?)'
-      ).run(body.field_id, JSON.stringify(body.keywords), userId);
-      const searchId = searchResult.lastInsertRowid as number;
+      await initDb();
+      const { id: searchId } = await run(
+        'INSERT INTO job_searches (field_id, keywords_used_json, user_id) VALUES ($1,$2,$3) RETURNING id',
+        [body.field_id, JSON.stringify(body.keywords), userId]
+      );
 
       try {
         const jobs = await searchJobs(body.field_name, body.keywords, (msg) => {
@@ -35,18 +35,15 @@ export async function POST(req: Request) {
 
         send({ type: 'status', message: 'Saving results...' });
 
-        const insertJob = db.prepare(`
-          INSERT INTO job_listings (search_id, field_id, title, company, location, url, source_site, description_raw, description_summary, match_score)
-          VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
-        `);
-        db.transaction(() => {
-          for (const job of jobs) {
-            insertJob.run(searchId, body.field_id, job.title, job.company, job.location,
-              job.url, job.source_site, job.description_raw, job.description_summary, job.match_score);
-          }
-        })();
+        for (const job of jobs) {
+          await run(`
+            INSERT INTO job_listings (search_id, field_id, title, company, location, url, source_site, description_raw, description_summary, match_score)
+            VALUES ($1,$2,$3,$4,$5,$6,$7,$8,$9,$10)
+          `, [searchId, body.field_id, job.title, job.company, job.location,
+              job.url, job.source_site, job.description_raw, job.description_summary, job.match_score]);
+        }
 
-        const listings = db.prepare('SELECT * FROM job_listings WHERE search_id=? ORDER BY match_score DESC').all(searchId);
+        const listings = await rows('SELECT * FROM job_listings WHERE search_id=$1 ORDER BY match_score DESC', [searchId]);
         send({ type: 'done', search_id: searchId, jobs: listings });
       } catch (err) {
         console.error('Job search error:', err);

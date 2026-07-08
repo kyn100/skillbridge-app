@@ -1,42 +1,40 @@
 import { NextResponse } from 'next/server';
-import { getDb } from '@/lib/db';
+import { rows, row, run, initDb } from '@/lib/db';
 import { generateTextbookChapters } from '@/lib/claude';
 
-export function GET(req: Request) {
+export async function GET(req: Request) {
   const { searchParams } = new URL(req.url);
   const moduleId = searchParams.get('moduleId');
   if (!moduleId) return NextResponse.json({ error: 'moduleId required' }, { status: 400 });
-  const db = getDb();
-  const chapters = db.prepare('SELECT * FROM textbook_chapters WHERE module_id=? ORDER BY order_num').all(moduleId);
+  await initDb();
+  const chapters = await rows('SELECT * FROM textbook_chapters WHERE module_id=$1 ORDER BY order_num', [moduleId]);
   return NextResponse.json(chapters);
 }
 
 export async function POST(req: Request) {
   const body = await req.json() as { module_id: number };
-  const db = getDb();
+  await initDb();
 
-  const mod = db.prepare('SELECT * FROM study_modules WHERE id=?').get(body.module_id) as Record<string, string> | undefined;
+  const mod = await row('SELECT * FROM study_modules WHERE id=$1', [body.module_id]) as Record<string, string> | undefined;
   if (!mod) return NextResponse.json({ error: 'Module not found' }, { status: 404 });
 
-  const existing = db.prepare('SELECT id FROM textbook_chapters WHERE module_id=?').get(body.module_id);
+  const existing = await row('SELECT id FROM textbook_chapters WHERE module_id=$1', [body.module_id]);
   if (existing) {
-    const chapters = db.prepare('SELECT * FROM textbook_chapters WHERE module_id=? ORDER BY order_num').all(body.module_id);
+    const chapters = await rows('SELECT * FROM textbook_chapters WHERE module_id=$1 ORDER BY order_num', [body.module_id]);
     return NextResponse.json(chapters);
   }
 
   try {
     const chapters = await generateTextbookChapters(mod.title, mod.skill_category, mod.description);
-    const insert = db.prepare('INSERT INTO textbook_chapters (module_id, title, content_markdown, order_num) VALUES (?, ?, ?, ?)');
-    const insertAll = db.transaction(() => {
-      for (const ch of chapters) {
-        insert.run(body.module_id, ch.title, ch.content_markdown, ch.order_num);
-      }
-    });
-    insertAll();
+    for (const ch of chapters) {
+      await run(
+        'INSERT INTO textbook_chapters (module_id, title, content_markdown, order_num) VALUES ($1,$2,$3,$4)',
+        [body.module_id, ch.title, ch.content_markdown, ch.order_num]
+      );
+    }
+    await run("UPDATE study_modules SET status='in_progress' WHERE id=$1 AND status='available'", [body.module_id]);
 
-    db.prepare("UPDATE study_modules SET status='in_progress' WHERE id=? AND status='available'").run(body.module_id);
-
-    const saved = db.prepare('SELECT * FROM textbook_chapters WHERE module_id=? ORDER BY order_num').all(body.module_id);
+    const saved = await rows('SELECT * FROM textbook_chapters WHERE module_id=$1 ORDER BY order_num', [body.module_id]);
     return NextResponse.json(saved);
   } catch (err) {
     console.error('Textbook error:', err);

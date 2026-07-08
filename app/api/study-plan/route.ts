@@ -1,14 +1,14 @@
 import { NextResponse } from 'next/server';
 import { getServerSession } from 'next-auth';
 import { authOptions } from '@/lib/auth';
-import { getDb } from '@/lib/db';
+import { rows, row, run, initDb } from '@/lib/db';
 import { generateStudyPlan, generateTextbookChapters, generateFlashcards, generateMindmap, generateCaseStudies } from '@/lib/claude';
 
 async function warmUpModule(moduleId: number, title: string, skillCategory: string, description: string) {
-  const db = getDb();
+  await initDb();
 
   // Skip if textbook already exists (idempotent)
-  const existing = db.prepare('SELECT id FROM textbook_chapters WHERE module_id=?').get(moduleId);
+  const existing = await row('SELECT id FROM textbook_chapters WHERE module_id=$1', [moduleId]);
   if (existing) return;
 
   // Phase 1: textbook + mindmap + case studies in parallel
@@ -19,37 +19,43 @@ async function warmUpModule(moduleId: number, title: string, skillCategory: stri
   ]);
 
   // Save textbook chapters
-  const insertChapter = db.prepare(
-    'INSERT INTO textbook_chapters (module_id, title, content_markdown, order_num) VALUES (?, ?, ?, ?)'
-  );
-  db.transaction(() => {
-    for (const ch of chapters) insertChapter.run(moduleId, ch.title, ch.content_markdown, ch.order_num);
-  })();
-  db.prepare("UPDATE study_modules SET status='in_progress' WHERE id=? AND status='available'").run(moduleId);
+  for (const ch of chapters) {
+    await run(
+      'INSERT INTO textbook_chapters (module_id, title, content_markdown, order_num) VALUES ($1,$2,$3,$4)',
+      [moduleId, ch.title, ch.content_markdown, ch.order_num]
+    );
+  }
+  await run("UPDATE study_modules SET status='in_progress' WHERE id=$1 AND status='available'", [moduleId]);
 
   // Save mindmap
-  if (!db.prepare('SELECT id FROM mindmaps WHERE module_id=?').get(moduleId)) {
-    db.prepare('INSERT INTO mindmaps (module_id, data_json) VALUES (?, ?)').run(moduleId, JSON.stringify(mindmapData));
+  const existingMindmap = await row('SELECT id FROM mindmaps WHERE module_id=$1', [moduleId]);
+  if (!existingMindmap) {
+    await run('INSERT INTO mindmaps (module_id, data_json) VALUES ($1,$2)', [moduleId, JSON.stringify(mindmapData)]);
   }
 
   // Save case studies
-  if (!db.prepare('SELECT id FROM case_studies WHERE module_id=?').get(moduleId)) {
-    const insertCase = db.prepare(
-      'INSERT INTO case_studies (module_id, title, industry, story, analysis, key_learnings_json, order_num) VALUES (?, ?, ?, ?, ?, ?, ?)'
-    );
-    db.transaction(() => {
-      caseData.forEach((c, i) => insertCase.run(moduleId, c.title, c.industry, c.story, c.analysis, JSON.stringify(c.key_learnings), i + 1));
-    })();
+  const existingCase = await row('SELECT id FROM case_studies WHERE module_id=$1', [moduleId]);
+  if (!existingCase) {
+    for (let i = 0; i < caseData.length; i++) {
+      const c = caseData[i];
+      await run(
+        'INSERT INTO case_studies (module_id, title, industry, story, analysis, key_learnings_json, order_num) VALUES ($1,$2,$3,$4,$5,$6,$7)',
+        [moduleId, c.title, c.industry, c.story, c.analysis, JSON.stringify(c.key_learnings), i + 1]
+      );
+    }
   }
 
   // Phase 2: flashcards (needs chapter content)
-  if (!db.prepare('SELECT id FROM flashcards WHERE module_id=?').get(moduleId)) {
+  const existingFlashcard = await row('SELECT id FROM flashcards WHERE module_id=$1', [moduleId]);
+  if (!existingFlashcard) {
     const combinedContent = chapters.map(c => c.content_markdown).join('\n\n');
     const cards = await generateFlashcards(title, combinedContent);
-    const insertCard = db.prepare('INSERT INTO flashcards (module_id, front, back, order_num) VALUES (?, ?, ?, ?)');
-    db.transaction(() => {
-      cards.forEach((card, i) => insertCard.run(moduleId, card.front, card.back, i + 1));
-    })();
+    for (let i = 0; i < cards.length; i++) {
+      await run(
+        'INSERT INTO flashcards (module_id, front, back, order_num) VALUES ($1,$2,$3,$4)',
+        [moduleId, cards[i].front, cards[i].back, i + 1]
+      );
+    }
   }
 }
 
@@ -64,16 +70,17 @@ export async function GET(req: Request) {
 
   const { searchParams } = new URL(req.url);
   const resumeId = searchParams.get('resumeId');
-  const db = getDb();
+  await initDb();
 
   if (!resumeId) return NextResponse.json({ error: 'resumeId required' }, { status: 400 });
 
-  const plan = db.prepare(
-    'SELECT * FROM study_plans WHERE resume_id=? AND user_id=? ORDER BY created_at DESC LIMIT 1'
-  ).get(resumeId, userId) as Record<string, unknown> | undefined;
+  const plan = await row(
+    'SELECT * FROM study_plans WHERE resume_id=$1 AND user_id=$2 ORDER BY created_at DESC LIMIT 1',
+    [resumeId, userId]
+  ) as Record<string, unknown> | undefined;
   if (!plan) return NextResponse.json(null);
 
-  const modules = db.prepare('SELECT * FROM study_modules WHERE plan_id=? ORDER BY order_num').all((plan as { id: number }).id);
+  const modules = await rows('SELECT * FROM study_modules WHERE plan_id=$1 ORDER BY order_num', [(plan as { id: number }).id]);
   return NextResponse.json({ ...plan, skill_gaps: JSON.parse(plan.skill_gaps_json as string), modules });
 }
 
@@ -82,15 +89,15 @@ export async function POST(req: Request) {
   if (!userId) return NextResponse.json({ error: 'Unauthorized' }, { status: 401 });
 
   const body = await req.json() as { resume_id: number; job_listing_id: number };
-  const db = getDb();
+  await initDb();
 
-  const resume = db.prepare('SELECT * FROM resumes WHERE id=? AND user_id=?').get(body.resume_id, userId) as Record<string, unknown> | undefined;
+  const resume = await row('SELECT * FROM resumes WHERE id=$1 AND user_id=$2', [body.resume_id, userId]) as Record<string, unknown> | undefined;
   if (!resume) return NextResponse.json({ error: 'Resume not found' }, { status: 404 });
 
-  const job = db.prepare('SELECT * FROM job_listings WHERE id=?').get(body.job_listing_id) as Record<string, string> | undefined;
+  const job = await row('SELECT * FROM job_listings WHERE id=$1', [body.job_listing_id]) as Record<string, string> | undefined;
   if (!job) return NextResponse.json({ error: 'Job not found' }, { status: 404 });
 
-  const profileRow = db.prepare('SELECT * FROM user_profile WHERE user_id=? LIMIT 1').get(userId) as Record<string, string> | undefined;
+  const profileRow = await row('SELECT * FROM user_profile WHERE user_id=$1 LIMIT 1', [userId]) as Record<string, string> | undefined;
   if (!profileRow) return NextResponse.json({ error: 'Profile not found' }, { status: 400 });
 
   const profileSkills = JSON.parse(profileRow.skills_json) as string[];
@@ -99,26 +106,23 @@ export async function POST(req: Request) {
   try {
     const planData = await generateStudyPlan(profileSkills, jobRequirements, job.title);
 
-    const planResult = db.prepare(`
+    const { id: planId } = await run(`
       INSERT INTO study_plans (resume_id, job_listing_id, user_id, skill_gaps_json, overview, total_hours_estimate)
-      VALUES (?, ?, ?, ?, ?, ?)
-    `).run(body.resume_id, body.job_listing_id, userId,
-      JSON.stringify(planData.skill_gaps), planData.overview, planData.total_hours_estimate);
-    const planId = planResult.lastInsertRowid as number;
+      VALUES ($1,$2,$3,$4,$5,$6) RETURNING id
+    `, [body.resume_id, body.job_listing_id, userId,
+      JSON.stringify(planData.skill_gaps), planData.overview, planData.total_hours_estimate]);
 
-    const insertModule = db.prepare(`
-      INSERT INTO study_modules (plan_id, title, description, skill_category, order_num, estimated_hours, status)
-      VALUES (?, ?, ?, ?, ?, ?, ?)
-    `);
-    db.transaction(() => {
-      planData.modules.forEach((mod, idx) => {
-        insertModule.run(planId, mod.title, mod.description, mod.skill_category,
-          mod.order_num, mod.estimated_hours, idx === 0 ? 'available' : 'locked');
-      });
-    })();
+    for (let idx = 0; idx < planData.modules.length; idx++) {
+      const mod = planData.modules[idx];
+      await run(`
+        INSERT INTO study_modules (plan_id, title, description, skill_category, order_num, estimated_hours, status)
+        VALUES ($1,$2,$3,$4,$5,$6,$7)
+      `, [planId, mod.title, mod.description, mod.skill_category,
+          mod.order_num, mod.estimated_hours, idx === 0 ? 'available' : 'locked']);
+    }
 
-    const modules = db.prepare('SELECT * FROM study_modules WHERE plan_id=? ORDER BY order_num').all(planId) as Array<{ id: number; title: string; skill_category: string; description: string }>;
-    const plan = db.prepare('SELECT * FROM study_plans WHERE id=?').get(planId) as Record<string, unknown>;
+    const modules = await rows('SELECT * FROM study_modules WHERE plan_id=$1 ORDER BY order_num', [planId]) as Array<{ id: number; title: string; skill_category: string; description: string }>;
+    const plan = await row('SELECT * FROM study_plans WHERE id=$1', [planId]) as Record<string, unknown>;
 
     // Fire background warm-up for module 1 — runs after response is sent
     const m1 = modules[0];

@@ -1,19 +1,19 @@
 import { NextResponse } from 'next/server';
 import { getServerSession } from 'next-auth';
 import { authOptions } from '@/lib/auth';
-import { getDb } from '@/lib/db';
+import { rows, initDb } from '@/lib/db';
 
 export async function GET() {
   const session = await getServerSession(authOptions);
   const userId = (session?.user as { id?: string })?.id;
   if (!userId) return NextResponse.json({ error: 'Unauthorized' }, { status: 401 });
 
-  const db = getDb();
+  await initDb();
 
-  const plans = db.prepare('SELECT * FROM study_plans WHERE user_id=? ORDER BY created_at DESC').all(userId) as Array<Record<string, unknown>>;
+  const plans = await rows('SELECT * FROM study_plans WHERE user_id=$1 ORDER BY created_at DESC', [userId]) as Array<Record<string, unknown>>;
 
-  const plansWithModules = plans.map(plan => {
-    const modules = db.prepare('SELECT * FROM study_modules WHERE plan_id=? ORDER BY order_num').all(plan.id as number) as Array<Record<string, unknown>>;
+  const plansWithModules = await Promise.all(plans.map(async plan => {
+    const modules = await rows('SELECT * FROM study_modules WHERE plan_id=$1 ORDER BY order_num', [plan.id as number]) as Array<Record<string, unknown>>;
     return {
       ...plan,
       skill_gaps: JSON.parse(plan.skill_gaps_json as string),
@@ -22,20 +22,21 @@ export async function GET() {
         estimated_hours: m.estimated_hours, order_num: m.order_num,
       })),
     };
-  });
+  }));
 
   const allModuleIds = plansWithModules.flatMap(p => p.modules.map(m => (m as { id: number }).id));
 
   const allModules = allModuleIds.length
-    ? db.prepare(`SELECT status FROM study_modules WHERE id IN (${allModuleIds.map(() => '?').join(',')})`).all(...allModuleIds) as Array<{ status: string }>
+    ? await rows<{ status: string }>(`SELECT status FROM study_modules WHERE id = ANY($1::int[])`, [allModuleIds])
     : [];
 
-  const testIds = allModuleIds.length
-    ? (db.prepare(`SELECT id FROM tests WHERE module_id IN (${allModuleIds.map(() => '?').join(',')})`).all(...allModuleIds) as Array<{ id: number }>).map(t => t.id)
+  const testIdRows = allModuleIds.length
+    ? await rows<{ id: number }>(`SELECT id FROM tests WHERE module_id = ANY($1::int[])`, [allModuleIds])
     : [];
+  const testIds = testIdRows.map(t => t.id);
 
   const allAttempts = testIds.length
-    ? db.prepare(`SELECT score, passed FROM test_attempts WHERE test_id IN (${testIds.map(() => '?').join(',')})`).all(...testIds) as Array<{ score: number; passed: number }>
+    ? await rows<{ score: number; passed: number }>(`SELECT score, passed FROM test_attempts WHERE test_id = ANY($1::int[])`, [testIds])
     : [];
 
   const completedModules = allModules.filter(m => m.status === 'completed').length;

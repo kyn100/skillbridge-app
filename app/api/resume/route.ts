@@ -1,7 +1,7 @@
 import { NextRequest, NextResponse } from 'next/server';
 import { getServerSession } from 'next-auth';
 import { authOptions } from '@/lib/auth';
-import { getDb } from '@/lib/db';
+import { row, run, initDb } from '@/lib/db';
 import { generateResume } from '@/lib/claude';
 
 export async function GET(request: NextRequest) {
@@ -9,31 +9,32 @@ export async function GET(request: NextRequest) {
   const userId = (session?.user as { id?: string })?.id;
   if (!userId) return NextResponse.json(null);
 
-  const db = getDb();
+  await initDb();
   const jobId = request.nextUrl.searchParams.get('jobId');
 
   // With jobId: return the most recent resume for that job
   if (jobId) {
-    const row = db.prepare(
-      `SELECT id, job_listing_id, profile_id, content_json, created_at
-       FROM resumes WHERE job_listing_id = ? AND user_id = ?
-       ORDER BY created_at DESC LIMIT 1`
-    ).get(Number(jobId), userId) as {
+    const resumeData = await row<{
       id: number; job_listing_id: number; profile_id: number;
       content_json: string; created_at: string;
-    } | undefined;
-    if (!row) return NextResponse.json(null);
+    }>(
+      `SELECT id, job_listing_id, profile_id, content_json, created_at
+       FROM resumes WHERE job_listing_id=$1 AND user_id=$2
+       ORDER BY created_at DESC LIMIT 1`,
+      [Number(jobId), userId]
+    );
+    if (!resumeData) return NextResponse.json(null);
     return NextResponse.json({
-      id: row.id,
-      job_listing_id: row.job_listing_id,
-      profile_id: row.profile_id,
-      content: JSON.parse(row.content_json),
-      created_at: row.created_at,
+      id: resumeData.id,
+      job_listing_id: resumeData.job_listing_id,
+      profile_id: resumeData.profile_id,
+      content: JSON.parse(resumeData.content_json),
+      created_at: resumeData.created_at,
     });
   }
 
   // Without jobId: return "continue learning" data for the home page banner
-  const row = db.prepare(`
+  const activeModule = await row<Record<string, unknown>>(`
     SELECT
       sm.id            AS module_id,
       sm.title         AS module_title,
@@ -49,48 +50,47 @@ export async function GET(request: NextRequest) {
     FROM study_modules sm
     JOIN study_plans   sp ON sm.plan_id = sp.id
     JOIN job_listings  jl ON sp.job_listing_id = jl.id
-    WHERE sp.user_id = ?
+    WHERE sp.user_id = $1
       AND sm.status IN ('in_progress', 'available')
     ORDER BY
       CASE sm.status WHEN 'in_progress' THEN 0 WHEN 'available' THEN 1 END,
       sp.created_at DESC,
       sm.order_num ASC
     LIMIT 1
-  `).get(userId) as Record<string, unknown> | undefined;
+  `, [userId]);
 
-  if (!row) return NextResponse.json(null);
+  if (!activeModule) return NextResponse.json(null);
 
-  const progress = db.prepare(`
+  const progressData = await row<{ total: string; completed: string }>(`
     SELECT
       COUNT(*) AS total,
       SUM(CASE WHEN status='completed' THEN 1 ELSE 0 END) AS completed
-    FROM study_modules WHERE plan_id = ?
-  `).get(row.plan_id as number) as { total: number; completed: number };
+    FROM study_modules WHERE plan_id=$1
+  `, [activeModule.plan_id as number]);
 
   let chapter_idx = 0;
-  const bm = db.prepare('SELECT value FROM settings WHERE key=?')
-    .get(`bookmark_${userId}`) as { value: string } | undefined;
+  const bm = await row<{ value: string }>('SELECT value FROM settings WHERE key=$1', [`bookmark_${userId}`]);
   if (bm) {
     try {
       const parsed = JSON.parse(bm.value) as { module_id: number; chapter_idx: number };
-      if (parsed.module_id === row.module_id) chapter_idx = parsed.chapter_idx;
+      if (parsed.module_id === activeModule.module_id) chapter_idx = parsed.chapter_idx;
     } catch { /* ignore */ }
   }
 
   return NextResponse.json({
     module: {
-      id: row.module_id,
-      title: row.module_title,
-      skill_category: row.skill_category,
-      status: row.module_status,
+      id: activeModule.module_id,
+      title: activeModule.module_title,
+      skill_category: activeModule.skill_category,
+      status: activeModule.module_status,
     },
     chapter_idx,
-    job: { title: row.job_title, company: row.company },
+    job: { title: activeModule.job_title, company: activeModule.company },
     plan: {
-      id: row.plan_id,
-      resume_id: row.resume_id,
-      total: progress.total,
-      completed: Number(progress.completed ?? 0),
+      id: activeModule.plan_id,
+      resume_id: activeModule.resume_id,
+      total: Number(progressData?.total ?? 0),
+      completed: Number(progressData?.completed ?? 0),
     },
   });
 }
@@ -100,20 +100,18 @@ export async function POST(request: NextRequest) {
   const userId = (session?.user as { id?: string })?.id;
   if (!userId) return NextResponse.json({ error: 'Unauthorized' }, { status: 401 });
 
-  const db = getDb();
+  await initDb();
   const { job_id } = await request.json() as { job_id: number };
 
-  const job = db.prepare('SELECT * FROM job_listings WHERE id = ?').get(job_id) as {
+  const job = await row<{
     id: number; title: string; company: string; description_raw: string;
-  } | undefined;
+  }>('SELECT * FROM job_listings WHERE id=$1', [job_id]);
   if (!job) return NextResponse.json({ error: 'Job not found' }, { status: 404 });
 
-  const profileRow = db.prepare(
-    'SELECT * FROM user_profile WHERE user_id = ? ORDER BY id DESC LIMIT 1'
-  ).get(userId) as {
+  const profileRow = await row<{
     id: number; name: string; email: string; phone: string; summary: string;
     education_json: string; experience_json: string; skills_json: string;
-  } | undefined;
+  }>('SELECT * FROM user_profile WHERE user_id=$1 ORDER BY id DESC LIMIT 1', [userId]);
   if (!profileRow) return NextResponse.json({ error: 'Profile not found. Please set up your profile first.' }, { status: 400 });
 
   const profile = {
@@ -128,12 +126,13 @@ export async function POST(request: NextRequest) {
 
   const content = await generateResume(profile, job.description_raw, job.title, job.company);
 
-  const result = db.prepare(
-    'INSERT INTO resumes (job_listing_id, profile_id, content_json, user_id) VALUES (?, ?, ?, ?)'
-  ).run(job_id, profileRow.id, JSON.stringify(content), userId);
+  const { id: resumeId } = await run(
+    'INSERT INTO resumes (job_listing_id, profile_id, content_json, user_id) VALUES ($1,$2,$3,$4) RETURNING id',
+    [job_id, profileRow.id, JSON.stringify(content), userId]
+  );
 
   return NextResponse.json({
-    id: result.lastInsertRowid,
+    id: resumeId,
     job_listing_id: job_id,
     profile_id: profileRow.id,
     content,

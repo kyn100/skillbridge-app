@@ -1,7 +1,7 @@
 import { NextResponse } from 'next/server';
 import { getServerSession } from 'next-auth';
 import { authOptions } from '@/lib/auth';
-import { getDb } from '@/lib/db';
+import { row, initDb } from '@/lib/db';
 import { generateConceptDetail } from '@/lib/claude';
 
 export async function POST(req: Request) {
@@ -15,8 +15,8 @@ export async function POST(req: Request) {
     branch_label: string;
   };
 
-  const db = getDb();
-  const mod = db.prepare('SELECT title FROM study_modules WHERE id=?').get(module_id) as
+  await initDb();
+  const mod = await row('SELECT title FROM study_modules WHERE id=$1', [module_id]) as
     { title: string } | undefined;
 
   try {

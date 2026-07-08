@@ -1,32 +1,32 @@
 import { NextResponse } from 'next/server';
-import { getDb } from '@/lib/db';
+import { rows, row, initDb } from '@/lib/db';
 import { summarizeJob } from '@/lib/claude';
 
-export function GET(req: Request) {
+export async function GET(req: Request) {
   const { searchParams } = new URL(req.url);
   const id = searchParams.get('id');
   const searchId = searchParams.get('searchId');
-  const db = getDb();
+  await initDb();
 
   if (id) {
-    const job = db.prepare('SELECT * FROM job_listings WHERE id=?').get(id);
+    const job = await row('SELECT * FROM job_listings WHERE id=$1', [id]);
     if (!job) return NextResponse.json({ error: 'Not found' }, { status: 404 });
     return NextResponse.json(job);
   }
 
   if (searchId) {
-    const jobs = db.prepare('SELECT * FROM job_listings WHERE search_id=? ORDER BY match_score DESC').all(searchId);
+    const jobs = await rows('SELECT * FROM job_listings WHERE search_id=$1 ORDER BY match_score DESC', [searchId]);
     return NextResponse.json(jobs);
   }
 
-  const jobs = db.prepare('SELECT * FROM job_listings ORDER BY created_at DESC LIMIT 50').all();
+  const jobs = await rows('SELECT * FROM job_listings ORDER BY created_at DESC LIMIT 50');
   return NextResponse.json(jobs);
 }
 
 export async function POST(req: Request) {
   const body = await req.json() as { job_id: number; keywords: string[] };
-  const db = getDb();
-  const job = db.prepare('SELECT * FROM job_listings WHERE id=?').get(body.job_id) as Record<string, string> | undefined;
+  await initDb();
+  const job = await row('SELECT * FROM job_listings WHERE id=$1', [body.job_id]) as Record<string, string> | undefined;
   if (!job) return NextResponse.json({ error: 'Job not found' }, { status: 404 });
 
   try {

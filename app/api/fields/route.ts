@@ -1,8 +1,8 @@
 import { NextResponse } from 'next/server';
-import { getDb } from '@/lib/db';
+import { rows, initDb } from '@/lib/db';
 
-export function GET() {
-  const db = getDb();
-  const fields = db.prepare('SELECT * FROM job_fields ORDER BY display_order').all();
+export async function GET() {
+  await initDb();
+  const fields = await rows('SELECT * FROM job_fields ORDER BY display_order');
   return NextResponse.json(fields);
 }
