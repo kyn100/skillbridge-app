@@ -64,22 +64,6 @@ const STEPS: Step[] = [
   },
   {
     num: 6,
-    emoji: '🎤',
-    title: 'Practice Interview',
-    description: 'From any job detail page, click "Practice Interview" to run an AI-powered mock interview tailored to that role. Claude generates 6 questions based on the job description and your background.',
-    bullets: [
-      'Choose the interview type: Mixed, Behavioral, or Technical',
-      'Answer each question in your own words — take your time',
-      'Get instant feedback: score out of 10, strengths, and improvements for every answer',
-      'Collapsible sample answers show how an ideal response is structured',
-      'Final results screen shows your average score and a full per-question recap',
-    ],
-    tip: 'Run the interview before generating your resume — the feedback tells you which skills to emphasize.',
-    color: 'text-rose-700',
-    bgColor: 'bg-rose-50 border-rose-200',
-  },
-  {
-    num: 7,
     emoji: '📄',
     title: 'Generate Your Resume',
     description: 'AI creates a tailored, ATS-optimized resume for that specific job — highlighting the skills and experience that match the posting, with strong action verbs and quantified achievements.',
@@ -100,7 +84,7 @@ const STEPS: Step[] = [
     bgColor: 'bg-green-50 border-green-200',
   },
   {
-    num: 9,
+    num: 8,
     emoji: '📚',
     title: 'Study Each Module',
     description: 'Click any unlocked module to access four study tools — all AI-generated specifically for that topic:',
@@ -115,7 +99,7 @@ const STEPS: Step[] = [
     bgColor: 'bg-amber-50 border-amber-200',
   },
   {
-    num: 10,
+    num: 9,
     emoji: '✏️',
     title: 'Take the Tests',
     description: 'Each module has three quiz levels. You must pass one level (≥70%) to unlock the next.',
@@ -127,6 +111,22 @@ const STEPS: Step[] = [
     tip: 'Passing all three levels marks the module as completed and unlocks the next module in your plan.',
     color: 'text-orange-700',
     bgColor: 'bg-orange-50 border-orange-200',
+  },
+  {
+    num: 10,
+    emoji: '🎤',
+    title: 'Practice Interview',
+    description: 'Once you\'ve studied the material, go back to any job detail page and click "Practice Interview". Claude generates 6 tailored questions based on the role and your background.',
+    bullets: [
+      'Choose the interview type: Mixed, Behavioral, or Technical',
+      'Answer each question in your own words — take your time',
+      'Get instant feedback: score out of 10, strengths, and improvements for every answer',
+      'Collapsible sample answers show how an ideal response is structured',
+      'Final results screen shows your average score and a full per-question recap',
+    ],
+    tip: 'Run the interview after completing your study modules — you\'ll have the knowledge to answer confidently.',
+    color: 'text-rose-700',
+    bgColor: 'bg-rose-50 border-rose-200',
   },
   {
     num: 11,
@@ -175,7 +175,7 @@ export default function GuidePage() {
       <div className="card p-5 mb-10 bg-gradient-to-r from-blue-50 to-violet-50 border-blue-200">
         <p className="text-xs font-semibold text-blue-600 uppercase tracking-wider mb-3">The Full Pipeline</p>
         <div className="flex flex-wrap items-center gap-2 text-sm text-gray-700">
-          {['Profile', 'Pick Field', 'Keywords', 'Search Jobs', 'Interview', 'Resume', 'Study Plan', 'Study', 'Tests', 'Progress'].map((s, i, arr) => (
+          {['Profile', 'Pick Field', 'Keywords', 'Search Jobs', 'Resume', 'Study Plan', 'Study', 'Tests', 'Interview', 'Progress'].map((s, i, arr) => (
             <span key={s} className="flex items-center gap-2">
               <span className="font-medium">{s}</span>
               {i < arr.length - 1 && <ArrowRight size={13} className="text-gray-400 shrink-0" />}
