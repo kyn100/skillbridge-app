@@ -1,7 +1,13 @@
 /** @type {import('next').NextConfig} */
 const nextConfig = {
-  experimental: {
-    serverComponentsExternalPackages: ['pg', 'pg-pool', 'pg-protocol', 'pg-types'],
+  serverExternalPackages: ['pg', 'pg-native', 'pg-pool', 'pg-protocol', 'pg-types'],
+  webpack: (config) => {
+    config.resolve = config.resolve ?? {};
+    config.resolve.fallback = {
+      ...config.resolve.fallback,
+      'pg-native': false,
+    };
+    return config;
   },
 };
 
