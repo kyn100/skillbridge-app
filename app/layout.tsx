@@ -50,6 +50,9 @@ export default function RootLayout({ children }: { children: React.ReactNode }) 
                     <Link href="/progress" className="px-3 py-2 text-sm font-medium text-gray-600 hover:text-gray-900 hover:bg-gray-100 rounded-lg transition-colors">
                       Progress
                     </Link>
+                    <Link href="/paste-job" className="px-3 py-2 text-sm font-medium text-white bg-teal-500 hover:bg-teal-600 rounded-lg transition-colors">
+                      Paste Job
+                    </Link>
                     <Link href="/guide" className="px-3 py-2 text-sm font-medium text-blue-600 hover:text-blue-700 hover:bg-blue-50 rounded-lg transition-colors">
                       Guide
                     </Link>

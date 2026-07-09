@@ -2,7 +2,8 @@
 
 import { useEffect, useState } from 'react';
 import { useRouter } from 'next/navigation';
-import { ArrowRight, Search, BookOpen, Trophy, UserCircle, Map, PlayCircle, ClipboardList } from 'lucide-react';
+import Link from 'next/link';
+import { ArrowRight, Search, BookOpen, Trophy, UserCircle, Map, PlayCircle, ClipboardList, ClipboardPaste } from 'lucide-react';
 import type { JobField } from '@/lib/types';
 
 interface ResumeData {
@@ -90,9 +91,32 @@ export default function HomePage() {
         </div>
       )}
 
-      <div className="mb-8">
+      <div className="mb-6">
         <h1 className="text-3xl font-bold text-gray-900">Bridge the Gap to Your Dream Job</h1>
-        <p className="text-gray-500 mt-2">Pick your target field. SkillBridge finds the jobs, identifies your skill gaps, and trains you until you're ready.</p>
+        <p className="text-gray-500 mt-2">Pick your target field, or paste a job you already found — SkillBridge identifies your skill gaps and trains you until you&apos;re ready.</p>
+      </div>
+
+      {/* Quick-start: paste job CTA */}
+      <Link
+        href="/paste-job"
+        className="block mb-8 card p-4 border-teal-200 bg-gradient-to-r from-teal-50 to-cyan-50 hover:shadow-md hover:-translate-y-0.5 transition-all"
+      >
+        <div className="flex items-center gap-4">
+          <div className="w-11 h-11 rounded-xl bg-teal-100 flex items-center justify-center shrink-0">
+            <ClipboardPaste className="text-teal-600" size={22} />
+          </div>
+          <div className="flex-1 min-w-0">
+            <p className="font-semibold text-gray-900">Already have a job in mind?</p>
+            <p className="text-sm text-gray-500 mt-0.5">Paste any job description → get a tailored resume + personalized study plan in seconds</p>
+          </div>
+          <ArrowRight className="text-teal-500 shrink-0" size={18} />
+        </div>
+      </Link>
+
+      <div className="flex items-center gap-3 mb-5">
+        <div className="flex-1 h-px bg-gray-200" />
+        <span className="text-xs text-gray-400 font-medium">OR BROWSE BY FIELD</span>
+        <div className="flex-1 h-px bg-gray-200" />
       </div>
 
       <div className="grid grid-cols-2 sm:grid-cols-3 lg:grid-cols-4 xl:grid-cols-5 gap-4">
