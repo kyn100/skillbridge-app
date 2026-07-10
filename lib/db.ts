@@ -4,7 +4,8 @@ import { FIELDS_SEED } from './fields-seed';
 const pool = new Pool({
   connectionString: process.env.DATABASE_URL,
   ssl: process.env.NODE_ENV === 'production' ? { rejectUnauthorized: false } : false,
-  max: 10,
+  // Vercel/Neon serverless: keep pool small to avoid exhausting connections
+  max: process.env.VERCEL ? 1 : 10,
 });
 
 export async function rows<T = Record<string, unknown>>(sql: string, params?: unknown[]): Promise<T[]> {
